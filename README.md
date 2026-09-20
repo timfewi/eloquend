@@ -1,4 +1,4 @@
-# lazyd-tts
+# eloquend
 
 A low-latency local TTS daemon that accepts text fragments while an LLM is
 still generating and returns raw audio before the complete answer exists.
@@ -42,7 +42,7 @@ Audio frames use PCM s16le, so no complete WAV or MP3 file must be buffered.
 The core has no runtime dependencies outside Python 3.11 or newer.
 
 ```console
-PYTHONPATH=src python3 -m lazyd_tts --backend tone
+PYTHONPATH=src python3 -m eloquend --backend tone
 ```
 
 In a second terminal, stream simulated LLM tokens. Audio is written as raw
@@ -58,7 +58,7 @@ Install the maintained Piper Python package in the runtime environment and
 provide a voice model plus its adjacent JSON configuration:
 
 ```console
-PYTHONPATH=src python3 -m lazyd_tts \
+PYTHONPATH=src python3 -m eloquend \
   --backend piper \
   --model /models/de_DE-voice-medium.onnx
 ```
@@ -78,13 +78,13 @@ configuration whose flake already pins nixpkgs:
 let
   deVoice =
     pkgs.callPackage
-      ./path/to/lazyd-tts/nix/voices/de_DE-thorsten-medium.nix
+      ./path/to/eloquend/nix/voices/de_DE-thorsten-medium.nix
       { };
 in
 {
-  imports = [ ./path/to/lazyd-tts/nix/module.nix ];
+  imports = [ ./path/to/eloquend/nix/module.nix ];
 
-  services.lazyd-tts = {
+  services.eloquend = {
     enable = true;
     model = "${deVoice}/${deVoice.modelFile}";
   };
@@ -146,7 +146,3 @@ are:
 See [docs/architecture.md](docs/architecture.md) for the design and
 [docs/nix-migration.md](docs/nix-migration.md) for replacing a
 `lazy-reader-nix` wrapper.
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).

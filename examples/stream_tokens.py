@@ -9,8 +9,8 @@ import asyncio
 import os
 import sys
 
-from lazyd_tts.client import TTSClient
-from lazyd_tts.protocol import FrameType
+from eloquend.client import TTSClient
+from eloquend.protocol import FrameType
 
 
 async def fake_llm_tokens(text: str) -> AsyncIterator[str]:
@@ -48,9 +48,9 @@ def main() -> None:
         "--socket",
         type=Path,
         default=Path(runtime) / (
-            "lazyd-tts.sock"
+            "eloquend.sock"
             if "XDG_RUNTIME_DIR" in os.environ
-            else f"lazyd-tts-{os.getuid()}.sock"
+            else f"eloquend-{os.getuid()}.sock"
         ),
     )
     parser.add_argument(

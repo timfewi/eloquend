@@ -4,7 +4,7 @@ Hardware information does not belong in this public repository.
 
 ## Public/private boundary
 
-The public lazyd-tts source contains only generic capabilities and conservative
+The public eloquend source contains only generic capabilities and conservative
 defaults. It does not inspect `/proc/cpuinfo`, enumerate PCI devices, invoke
 vendor utilities, read a hostname or collect a machine identifier.
 
@@ -53,7 +53,7 @@ an initial tuning pass.
 Keep the resulting tuning in the private Home Manager configuration:
 
 ```nix
-services.lazyd-tts = {
+services.eloquend = {
   useCuda = true;
   tuning = {
     firstChunkChars = 24;

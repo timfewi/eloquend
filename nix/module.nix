@@ -6,7 +6,7 @@
 }:
 
 let
-  cfg = config.services.lazyd-tts;
+  cfg = config.services.eloquend;
 
   command =
     [
@@ -39,15 +39,15 @@ let
     ++ cfg.extraArgs;
 in
 {
-  options.services.lazyd-tts = {
-    enable = lib.mkEnableOption "the warm low-latency lazyd TTS daemon";
+  options.services.eloquend = {
+    enable = lib.mkEnableOption "the warm low-latency eloquend TTS daemon";
 
     package = lib.mkOption {
       type = lib.types.package;
       default = pkgs.callPackage ./package.nix { };
       defaultText = lib.literalExpression "pkgs.callPackage ./nix/package.nix { }";
       description = ''
-        lazyd-tts package. The default includes the maintained Piper runtime
+        eloquend package. The default includes the maintained Piper runtime
         when pkgs.piper-tts exists in the pinned nixpkgs revision.
       '';
     };
@@ -73,7 +73,7 @@ in
 
     socketPath = lib.mkOption {
       type = lib.types.str;
-      default = "%t/lazyd-tts.sock";
+      default = "%t/eloquend.sock";
       description = "Unix socket path; systemd expands %t to the user runtime directory.";
     };
 
@@ -141,17 +141,17 @@ in
     assertions = [
       {
         assertion = cfg.backend != "piper" || cfg.model != null;
-        message = "services.lazyd-tts.model is required for the Piper backend";
+        message = "services.eloquend.model is required for the Piper backend";
       }
       {
         assertion =
           cfg.tuning.maxChunkChars >= cfg.tuning.firstChunkChars
           && cfg.tuning.maxChunkChars >= cfg.tuning.minChunkChars;
-        message = "services.lazyd-tts.tuning.maxChunkChars must cover both minimums";
+        message = "services.eloquend.tuning.maxChunkChars must cover both minimums";
       }
     ];
 
-    systemd.user.services.lazyd-tts = {
+    systemd.user.services.eloquend = {
       Unit = {
         Description = "Warm low-latency streaming TTS daemon";
         After = [ "default.target" ];

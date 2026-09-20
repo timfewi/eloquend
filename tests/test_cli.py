@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from lazyd_tts.__main__ import _parser
+from eloquend.__main__ import _parser
 
 
 class CommandLineTests(unittest.TestCase):

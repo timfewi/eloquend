@@ -7,7 +7,7 @@
 
 assert lib.assertMsg (
   !withPiper || piper-tts != null
-) "lazyd-tts: withPiper requires pkgs.piper-tts";
+) "eloquend: withPiper requires pkgs.piper-tts";
 
 let
   piperRuntime =
@@ -21,7 +21,7 @@ let
       null;
 in
 python3Packages.buildPythonApplication {
-  pname = "lazyd-tts";
+  pname = "eloquend";
   version = "0.1.0";
   pyproject = true;
 
@@ -50,8 +50,8 @@ python3Packages.buildPythonApplication {
   ];
 
   pythonImportsCheck = [
-    "lazyd_tts"
-    "lazyd_tts.backends"
+    "eloquend"
+    "eloquend.backends"
   ];
 
   passthru = {
@@ -60,7 +60,7 @@ python3Packages.buildPythonApplication {
 
   meta = {
     description = "Low-latency local streaming TTS daemon";
-    mainProgram = "lazyd-tts";
+    mainProgram = "eloquend";
     platforms = lib.platforms.unix;
   };
 }

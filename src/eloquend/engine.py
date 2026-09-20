@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from contextlib import aclosing, suppress
 from dataclasses import dataclass, field
 from typing import Literal
 import asyncio
@@ -126,6 +127,27 @@ class EngineSession:
                 break
         await self._segments.put(None)
 
+    async def close(self) -> None:
+        """Release a disconnected session without interrupting model inference.
+
+        The event sender must be stopped before calling this method. Discarding
+        its queue lets a suspended backend finish and release the shared model
+        lane, even when the audio queue or terminal events are backpressured.
+        """
+        await self.cancel()
+
+        async def discard_output() -> None:
+            while True:
+                await self._output.get()
+
+        discard = asyncio.create_task(discard_output())
+        try:
+            await self._worker_task
+        finally:
+            discard.cancel()
+            with suppress(asyncio.CancelledError):
+                await discard
+
     async def events(self) -> AsyncIterator[EngineEvent]:
         while True:
             event = await self._output.get()
@@ -170,17 +192,18 @@ class EngineSession:
                     break
 
                 self._segment_count += 1
-                async for audio in self._backend.synthesize(
-                    segment, self._cancelled
-                ):
-                    if self._cancelled.is_set():
-                        status = "cancelled"
-                        break
-                    now = time.monotonic_ns()
-                    if self._first_audio_ns is None:
-                        self._first_audio_ns = now
-                    self._audio_bytes += len(audio)
-                    await self._output.put(EngineEvent("audio", audio))
+                async with aclosing(
+                    self._backend.synthesize(segment, self._cancelled)
+                ) as audio_stream:
+                    async for audio in audio_stream:
+                        if self._cancelled.is_set():
+                            status = "cancelled"
+                            break
+                        now = time.monotonic_ns()
+                        if self._first_audio_ns is None:
+                            self._first_audio_ns = now
+                        self._audio_bytes += len(audio)
+                        await self._output.put(EngineEvent("audio", audio))
 
                 if self._cancelled.is_set():
                     status = "cancelled"

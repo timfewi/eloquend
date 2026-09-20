@@ -4,9 +4,9 @@ from collections.abc import AsyncIterator
 import asyncio
 import unittest
 
-from lazyd_tts.backends import AudioFormat, SynthesisBackend, ToneBackend
-from lazyd_tts.engine import EngineConfig, StreamingEngine
-from lazyd_tts.segmenter import SegmenterConfig
+from eloquend.backends import AudioFormat, SynthesisBackend, ToneBackend
+from eloquend.engine import EngineConfig, StreamingEngine
+from eloquend.segmenter import SegmenterConfig
 
 
 class FailingBackend(SynthesisBackend):

@@ -8,8 +8,8 @@ import asyncio
 import json
 import statistics
 
-from lazyd_tts.backends import PiperBackend, ToneBackend
-from lazyd_tts.engine import EngineConfig, StreamingEngine
+from eloquend.backends import PiperBackend, ToneBackend
+from eloquend.engine import EngineConfig, StreamingEngine
 
 
 def _percentile(values: list[float], percentile: float) -> float:

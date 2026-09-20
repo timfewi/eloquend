@@ -22,16 +22,16 @@ service: startup must be deterministic and must not require network access.
 Conceptual service command:
 
 ```text
-lazyd-tts --backend piper \
+eloquend --backend piper \
   --model /nix/store/<hash>-de-voice/model.onnx \
-  --socket %t/lazyd-tts.sock
+  --socket %t/eloquend.sock
 ```
 
 ## Private host overlay
 
 Import the public module from the machine's separate private Home Manager
 configuration. Model selection, CUDA choice, tuning values and service resource
-limits stay there; they are not committed to lazyd-tts. The daemon does not
+limits stay there; they are not committed to eloquend. The daemon does not
 collect hardware identifiers. See [privacy.md](privacy.md).
 
 ## Migration sequence

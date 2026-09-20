@@ -82,6 +82,7 @@ class TTSServer:
     ) -> None:
         session: EngineSession | None = None
         sender: asyncio.Task[None] | None = None
+        receiver: asyncio.Task[None] | None = None
         try:
             first = await read_frame(reader)
             if first.kind is not FrameType.START:
@@ -99,30 +100,13 @@ class TTSServer:
             await write_frame(writer, Frame.json(FrameType.READY, ready))
             sender = asyncio.create_task(self._send_events(session, writer))
 
-            while True:
-                read_task = asyncio.create_task(read_frame(reader))
-                completed, _ = await asyncio.wait(
-                    (read_task, sender),
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-                if sender in completed:
-                    read_task.cancel()
-                    with suppress(asyncio.CancelledError):
-                        await read_task
-                    break
-
-                frame = read_task.result()
-                if frame.kind is FrameType.TEXT:
-                    await session.append_text(frame.payload.decode("utf-8"))
-                elif frame.kind is FrameType.FLUSH:
-                    await session.flush()
-                elif frame.kind is FrameType.END:
-                    await session.finish()
-                elif frame.kind is FrameType.CANCEL:
-                    await session.cancel()
-                else:
-                    raise ValueError(f"unexpected client frame: {frame.kind.name}")
-
+            receiver = asyncio.create_task(self._receive_text(session, reader))
+            completed, _ = await asyncio.wait(
+                (receiver, sender),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if receiver in completed:
+                await receiver
             await sender
         except (asyncio.IncompleteReadError, ConnectionError):
             if session is not None:
@@ -141,10 +125,35 @@ class TTSServer:
             except ConnectionError:
                 pass
         finally:
-            if sender is not None and not sender.done():
-                sender.cancel()
+            tasks = [task for task in (receiver, sender) if task is not None]
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
             writer.close()
-            await writer.wait_closed()
+            try:
+                if session is not None:
+                    await session.close()
+            finally:
+                with suppress(ConnectionError):
+                    await writer.wait_closed()
+
+    async def _receive_text(
+        self,
+        session: EngineSession,
+        reader: asyncio.StreamReader,
+    ) -> None:
+        while True:
+            frame = await read_frame(reader)
+            if frame.kind is FrameType.TEXT:
+                await session.append_text(frame.payload.decode("utf-8"))
+            elif frame.kind is FrameType.FLUSH:
+                await session.flush()
+            elif frame.kind is FrameType.END:
+                await session.finish()
+            elif frame.kind is FrameType.CANCEL:
+                await session.cancel()
+            else:
+                raise ValueError(f"unexpected client frame: {frame.kind.name}")
 
     async def _send_events(
         self,

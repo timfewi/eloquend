@@ -5,11 +5,11 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from lazyd_tts.backends import ToneBackend
-from lazyd_tts.client import TTSClient
-from lazyd_tts.engine import EngineConfig, StreamingEngine
-from lazyd_tts.protocol import Frame, FrameType, read_frame, write_frame
-from lazyd_tts.server import TTSServer
+from eloquend.backends import ToneBackend
+from eloquend.client import TTSClient
+from eloquend.engine import EngineConfig, StreamingEngine
+from eloquend.protocol import Frame, FrameType, read_frame, write_frame
+from eloquend.server import TTSServer
 
 
 class ServerTests(unittest.IsolatedAsyncioTestCase):

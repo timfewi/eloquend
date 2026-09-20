@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from lazyd_tts.segmenter import IncrementalSegmenter, SegmenterConfig
+from eloquend.segmenter import IncrementalSegmenter, SegmenterConfig
 
 
 class IncrementalSegmenterTests(unittest.TestCase):

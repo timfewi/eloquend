@@ -7,7 +7,7 @@ import asyncio
 import tempfile
 import unittest
 
-from lazyd_tts.backends import PiperBackend
+from eloquend.backends import PiperBackend
 
 
 class FakeChunk:

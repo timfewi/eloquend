@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import unittest
 
-from lazyd_tts.protocol import Frame, FrameType, encode_frame, read_frame
+from eloquend.protocol import Frame, FrameType, encode_frame, read_frame
 
 
 class ProtocolTests(unittest.IsolatedAsyncioTestCase):

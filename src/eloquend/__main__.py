@@ -16,8 +16,8 @@ from .server import TTSServer
 def _default_socket() -> Path:
     runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
     if runtime_dir:
-        return Path(runtime_dir) / "lazyd-tts.sock"
-    return Path("/tmp") / f"lazyd-tts-{os.getuid()}.sock"
+        return Path(runtime_dir) / "eloquend.sock"
+    return Path("/tmp") / f"eloquend-{os.getuid()}.sock"
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -61,7 +61,7 @@ async def _run(args: argparse.Namespace) -> None:
     )
     server = TTSServer(StreamingEngine(backend, config), args.socket)
     await server.start()
-    print(f"lazyd-tts ready on {args.socket}", flush=True)
+    print(f"eloquend ready on {args.socket}", flush=True)
     try:
         await server.serve_forever()
     finally:
