@@ -8,12 +8,15 @@ independently cancellable.
 
 ## Current status
 
-This repository contains a working streaming core and two backends:
+This repository contains a working streaming core and three backends:
 
 - `tone`: deterministic dependency-free backend for protocol tests and
   latency measurements.
 - `piper`: optional real TTS backend using Piper's Python API. The
   `.onnx` voice is loaded once, warmed up, and reused.
+- `openai`: hosted OpenAI-compatible speech API (for example OpenRouter).
+  No local model is loaded; raw PCM streams from the provider and the HTTP
+  connection is reused between phrases.
 
 The repository started as an empty Git worktree. It now includes a reusable
 Nix package and Home Manager systemd-user module. They deliberately consume
@@ -68,6 +71,25 @@ daemon serializes inference through one model lane to keep tail latency
 predictable. Scale with explicit model replicas rather than unbounded
 per-request inference.
 
+## Run a hosted backend
+
+Point the `openai` backend at an OpenAI-compatible audio API. The key is read
+from a runtime file, never from the Nix store or the command line:
+
+```console
+PYTHONPATH=src python3 -m eloquend \
+  --backend openai \
+  --model microsoft/mai-voice-2-flash \
+  --voice de-DE-Klaus:MAI-Voice-2 \
+  --api-key-file /run/secrets/openrouter-api-key \
+  --base-url https://openrouter.ai/api/v1
+```
+
+The provider must return raw `pcm` (24 kHz mono signed 16-bit little-endian
+by default; override with `--sample-rate` when a provider differs). Every
+phrase is sent to the provider, so enable this backend only when the text may
+leave the machine. See [docs/privacy.md](docs/privacy.md).
+
 ## Integrate with pinned Nixpkgs
 
 Import [nix/module.nix](nix/module.nix) from an existing Home Manager
@@ -95,6 +117,11 @@ The supplied German Thorsten voice is medium quality, 22.05 kHz, about 63 MB
 and published by the voice repository under MIT; its training dataset is
 listed as CC0. The repository revision, ONNX SHA256 and configuration SHA256
 are fixed in the derivation.
+
+The same module selects a hosted backend with `backend`, `model`, `voice`,
+`apiKeyFile`, `baseUrl` and `sampleRate`. When the openai backend is active,
+the service receives Internet address families and a CA bundle; the Piper
+path stays restricted to `AF_UNIX`.
 
 The default package uses `pkgs.piper-tts` when that attribute exists and
 disables Piper's training, HTTP and alignment extras. To build only the

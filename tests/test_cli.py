@@ -42,3 +42,22 @@ class CommandLineTests(unittest.TestCase):
         self.assertEqual(args.max_wait_ms, 180)
         self.assertEqual(args.segment_queue_size, 4)
         self.assertEqual(args.audio_queue_size, 8)
+
+    def test_hosted_backend_options_and_defaults(self) -> None:
+        args = _parser().parse_args(
+            [
+                "--backend",
+                "openai",
+                "--model",
+                "microsoft/mai-voice-2-flash",
+                "--voice",
+                "de-DE-Klaus:MAI-Voice-2",
+                "--api-key-file",
+                "/run/secrets/openrouter-api-key",
+            ]
+        )
+
+        self.assertEqual(args.base_url, "https://openrouter.ai/api/v1")
+        self.assertEqual(args.sample_rate, 24_000)
+        self.assertEqual(args.request_timeout, 60.0)
+        self.assertEqual(args.voice, "de-DE-Klaus:MAI-Voice-2")

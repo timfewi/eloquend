@@ -7,7 +7,7 @@ import argparse
 import asyncio
 import os
 
-from .backends import PiperBackend, ToneBackend
+from .backends import OpenAISpeechBackend, PiperBackend, ToneBackend
 from .engine import EngineConfig, StreamingEngine
 from .segmenter import SegmenterConfig
 from .server import TTSServer
@@ -22,15 +22,22 @@ def _default_socket() -> Path:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Low-latency local streaming TTS daemon"
+        description="Low-latency streaming TTS daemon"
     )
     parser.add_argument("--socket", type=Path, default=_default_socket())
     parser.add_argument(
-        "--backend", choices=("piper", "tone"), default="piper"
+        "--backend", choices=("piper", "tone", "openai"), default="piper"
     )
-    parser.add_argument("--model", type=Path)
+    parser.add_argument("--model", type=str)
     parser.add_argument("--cuda", action="store_true")
     parser.add_argument("--no-warmup", action="store_true")
+    parser.add_argument("--voice", type=str)
+    parser.add_argument("--api-key-file", type=Path)
+    parser.add_argument(
+        "--base-url", type=str, default="https://openrouter.ai/api/v1"
+    )
+    parser.add_argument("--sample-rate", type=int, default=24_000)
+    parser.add_argument("--request-timeout", type=float, default=60.0)
     parser.add_argument("--first-chunk-chars", type=int, default=24)
     parser.add_argument("--min-chunk-chars", type=int, default=40)
     parser.add_argument("--max-chunk-chars", type=int, default=140)
@@ -45,6 +52,21 @@ async def _run(args: argparse.Namespace) -> None:
         if args.model is None:
             raise SystemExit("--model is required for the piper backend")
         backend = PiperBackend(args.model, use_cuda=args.cuda)
+    elif args.backend == "openai":
+        if args.model is None:
+            raise SystemExit("--model is required for the openai backend")
+        if args.voice is None:
+            raise SystemExit("--voice is required for the openai backend")
+        if args.api_key_file is None:
+            raise SystemExit("--api-key-file is required for the openai backend")
+        backend = OpenAISpeechBackend(
+            api_key_file=args.api_key_file,
+            model=args.model,
+            voice=args.voice,
+            base_url=args.base_url,
+            sample_rate=args.sample_rate,
+            timeout_s=args.request_timeout,
+        )
     else:
         backend = ToneBackend(realtime=True)
 

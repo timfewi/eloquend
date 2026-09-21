@@ -73,8 +73,11 @@ largest unavoidable delay is therefore one backend-generated chunk.
   measuring warm TTFA and real-time factor on the target GPU.
 - Voice-cloning models: use a separate worker pool because their memory and
   latency profile differs substantially.
-- Hosted streaming API: useful when local model management is not required,
-  but changes privacy, cost and failure assumptions.
+- Hosted streaming API: implemented as the `openai` backend for
+  OpenAI-compatible `/audio/speech` endpoints (for example OpenRouter). It
+  streams raw PCM, reuses one keep-alive connection, serializes requests
+  through one lane and makes no request at startup. Selecting it changes the
+  privacy, cost and failure assumptions.
 
 The protocol intentionally contains no Piper-specific fields, so replacing
 the model does not change the LLM or audio-player integration.

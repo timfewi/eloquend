@@ -21,7 +21,8 @@ Do not create a host overlay inside this repository.
 
 ## Telemetry
 
-The daemon has no telemetry and no remote API. Per-request metrics contain only:
+The default daemon has no telemetry and no remote API. Per-request metrics
+contain only:
 
 - terminal status;
 - time-to-first-audio and total request duration;
@@ -31,7 +32,13 @@ The daemon has no telemetry and no remote API. Per-request metrics contain only:
 
 These metrics are returned over the request's local Unix socket. They are not
 persisted or uploaded. The Home Manager service restricts the process to
-`AF_UNIX`, preventing Internet sockets.
+`AF_UNIX` by default, preventing Internet sockets.
+
+The optional `openai` backend deliberately changes that boundary: it sends the
+text of every phrase to the configured hosted provider (for example
+OpenRouter) and therefore needs `AF_INET`/`AF_INET6`. Enable it only when the
+text may leave the machine. The provider API key is read from a runtime file
+and never enters the Nix store.
 
 Nix may fetch the hash-pinned runtime and voice while building. Model inference
 itself is local and does not download anything.

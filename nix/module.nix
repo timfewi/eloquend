@@ -8,35 +8,46 @@
 let
   cfg = config.services.eloquend;
 
-  command =
-    [
-      (lib.getExe cfg.package)
-      "--backend"
-      cfg.backend
-      "--socket"
-      cfg.socketPath
-    ]
-    ++ lib.optionals (cfg.model != null) [
-      "--model"
-      cfg.model
-    ]
-    ++ lib.optional cfg.useCuda "--cuda"
-    ++ lib.optional (!cfg.warmup) "--no-warmup"
-    ++ [
-      "--first-chunk-chars"
-      (toString cfg.tuning.firstChunkChars)
-      "--min-chunk-chars"
-      (toString cfg.tuning.minChunkChars)
-      "--max-chunk-chars"
-      (toString cfg.tuning.maxChunkChars)
-      "--max-wait-ms"
-      (toString cfg.tuning.maxWaitMs)
-      "--segment-queue-size"
-      (toString cfg.tuning.segmentQueueSize)
-      "--audio-queue-size"
-      (toString cfg.tuning.audioQueueSize)
-    ]
-    ++ cfg.extraArgs;
+  command = [
+    (lib.getExe cfg.package)
+    "--backend"
+    cfg.backend
+    "--socket"
+    cfg.socketPath
+  ]
+  ++ lib.optionals (cfg.model != null) [
+    "--model"
+    cfg.model
+  ]
+  ++ lib.optionals (cfg.backend == "openai") [
+    "--voice"
+    cfg.voice
+    "--api-key-file"
+    cfg.apiKeyFile
+    "--base-url"
+    cfg.baseUrl
+    "--sample-rate"
+    (toString cfg.sampleRate)
+    "--request-timeout"
+    (toString cfg.requestTimeout)
+  ]
+  ++ lib.optional cfg.useCuda "--cuda"
+  ++ lib.optional (!cfg.warmup) "--no-warmup"
+  ++ [
+    "--first-chunk-chars"
+    (toString cfg.tuning.firstChunkChars)
+    "--min-chunk-chars"
+    (toString cfg.tuning.minChunkChars)
+    "--max-chunk-chars"
+    (toString cfg.tuning.maxChunkChars)
+    "--max-wait-ms"
+    (toString cfg.tuning.maxWaitMs)
+    "--segment-queue-size"
+    (toString cfg.tuning.segmentQueueSize)
+    "--audio-queue-size"
+    (toString cfg.tuning.audioQueueSize)
+  ]
+  ++ cfg.extraArgs;
 in
 {
   options.services.eloquend = {
@@ -56,9 +67,14 @@ in
       type = lib.types.enum [
         "piper"
         "tone"
+        "openai"
       ];
       default = "piper";
-      description = "Synthesis backend. The tone backend is only for tests.";
+      description = ''
+        Synthesis backend. The tone backend is only for tests. The openai
+        backend speaks the OpenAI-compatible audio speech API and is meant
+        for hosted providers such as OpenRouter.
+      '';
     };
 
     model = lib.mkOption {
@@ -66,9 +82,50 @@ in
       default = null;
       example = "/nix/store/hash-de-voice/de_DE-voice-medium.onnx";
       description = ''
-        Absolute Piper ONNX model path. Its JSON configuration must be
-        available next to the model.
+        Absolute Piper ONNX model path, or the hosted model slug when the
+        openai backend is selected. A Piper model's JSON configuration must
+        be available next to the model.
       '';
+    };
+
+    voice = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "de-DE-Klaus:MAI-Voice-2";
+      description = "Provider voice identifier for the openai backend.";
+    };
+
+    apiKeyFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "/run/secrets/openrouter-api-key";
+      description = ''
+        Runtime path to a file holding the provider API key. The daemon reads
+        it once at startup; the value never enters the Nix store.
+      '';
+    };
+
+    baseUrl = lib.mkOption {
+      type = lib.types.str;
+      default = "https://openrouter.ai/api/v1";
+      description = ''
+        OpenAI-compatible audio API base URL used by the openai backend.
+      '';
+    };
+
+    sampleRate = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = 24000;
+      description = ''
+        PCM sample rate returned by the hosted provider. The OpenAI audio
+        format convention is 24 kHz mono signed 16-bit little-endian.
+      '';
+    };
+
+    requestTimeout = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = 60;
+      description = "HTTP request timeout in seconds for the openai backend.";
     };
 
     socketPath = lib.mkOption {
@@ -145,6 +202,11 @@ in
       }
       {
         assertion =
+          cfg.backend != "openai" || (cfg.model != null && cfg.voice != null && cfg.apiKeyFile != null);
+        message = "services.eloquend.model, voice and apiKeyFile are required for the openai backend";
+      }
+      {
+        assertion =
           cfg.tuning.maxChunkChars >= cfg.tuning.firstChunkChars
           && cfg.tuning.maxChunkChars >= cfg.tuning.minChunkChars;
         message = "services.eloquend.tuning.maxChunkChars must cover both minimums";
@@ -163,13 +225,28 @@ in
         Restart = "on-failure";
         RestartSec = "1s";
         TimeoutStopSec = "5s";
-        Environment = "PYTHONUNBUFFERED=1";
+        Environment = [
+          "PYTHONUNBUFFERED=1"
+        ]
+        ++ lib.optionals (cfg.backend == "openai") [
+          "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+          "NIX_SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+        ];
 
         NoNewPrivileges = true;
         PrivateTmp = true;
         ProtectSystem = "strict";
         ProtectHome = "read-only";
-        RestrictAddressFamilies = [ "AF_UNIX" ];
+        RestrictAddressFamilies = [
+          "AF_UNIX"
+        ]
+        ++ lib.optionals (cfg.backend == "openai") [
+          "AF_INET"
+          "AF_INET6"
+        ];
+        # The socket lives directly in %t. ProtectSystem=strict makes the
+        # runtime directory read-only unless it is listed here.
+        ReadWritePaths = [ "%t" ];
         UMask = "0077";
       };
 
