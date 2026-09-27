@@ -7,7 +7,9 @@
 2. The incremental segmenter receives arbitrary LLM token fragments. Sentence
    endings flush immediately; a 180 ms deadline releases sufficiently long
    text; 140 characters is the hard maximum.
-3. A bounded segment queue applies backpressure to the LLM integration.
+3. The receiver buffers segments up to a fixed session cap and never blocks:
+   a `CANCEL` frame arrives behind queued text on the same stream, so text
+   backpressure would delay cancellation until the current phrase finished.
 4. A backend owns a single warm model. Piper inference is serialized through
    one lane for predictable p95 latency.
 5. A bounded audio queue streams PCM chunks to the client and propagates slow

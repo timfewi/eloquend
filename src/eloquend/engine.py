@@ -12,10 +12,18 @@ import time
 from .backends.base import SynthesisBackend
 from .segmenter import IncrementalSegmenter, SegmenterConfig
 
+# Text buffering must never block the receiver: a CANCEL frame arrives behind
+# any queued text on the same stream, so a receiver that waits for the
+# synthesis queue would not observe a cancellation until the stalled segment
+# finishes. The limit still bounds a flooding client.
+MAX_BUFFERED_SEGMENTS = 8192
+
 
 @dataclass(frozen=True, slots=True)
 class EngineConfig:
     segmenter: SegmenterConfig = field(default_factory=SegmenterConfig)
+    # Retained for command-line compatibility. Text ingestion must never block
+    # on this queue, so a session buffers up to MAX_BUFFERED_SEGMENTS instead.
     segment_queue_size: int = 4
     audio_queue_size: int = 8
     warmup_text: str = "Bereit."
@@ -70,9 +78,9 @@ class EngineSession:
         self._backend = backend
         self._config = config
         self._segmenter = IncrementalSegmenter(config.segmenter)
-        self._segments: asyncio.Queue[str | None] = asyncio.Queue(
-            maxsize=config.segment_queue_size
-        )
+        # Unbounded on purpose: the receiver must stay responsive to control
+        # frames while synthesis is backpressured (see MAX_BUFFERED_SEGMENTS).
+        self._segments: asyncio.Queue[str | None] = asyncio.Queue()
         self._output: asyncio.Queue[EngineEvent] = asyncio.Queue(
             maxsize=config.audio_queue_size
         )
@@ -93,7 +101,9 @@ class EngineSession:
             self._input_started_ns = time.monotonic_ns()
 
         for segment in self._segmenter.append(text):
-            await self._segments.put(segment)
+            if self._segments.qsize() >= MAX_BUFFERED_SEGMENTS:
+                raise RuntimeError("buffered speech exceeds the session limit")
+            self._segments.put_nowait(segment)
         self._ensure_deadline()
 
     async def flush(self) -> None:

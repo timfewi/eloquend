@@ -36,6 +36,8 @@ reads `AUDIO`.
 request. `END` flushes and drains all work. `CANCEL` discards queued
 phrases and signals the active backend inference.
 
-Backpressure is deliberate: socket writes, the segment queue and the audio
-queue are bounded. A slow player therefore stops text ingestion instead of
-allowing unbounded memory growth.
+Backpressure is deliberate: socket writes and the audio queue are bounded, so
+a slow player stops synthesis instead of allowing unbounded memory growth.
+Text ingestion itself is capped per session but never blocks the receiver:
+`CANCEL` arrives behind queued text on the same stream, so blocking on text
+would postpone cancellation until the active phrase completed.

@@ -11,12 +11,14 @@ phrases to keep time-to-first-audio low.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 import asyncio
 import http.client
 import json
 import queue
+import socket
 import threading
 import urllib.parse
 
@@ -118,20 +120,37 @@ class OpenAISpeechBackend(SynthesisBackend):
                 self._finish(chunks, None)
 
         task = asyncio.create_task(asyncio.to_thread(worker))
+        # Cancellation must reach the HTTP request even when the worker is
+        # still waiting for its first response byte: closing the connection
+        # from here unblocks the worker thread immediately instead of letting
+        # a stalled provider hold the shared connection lane.
+        watcher = asyncio.create_task(self._abort_on_cancel(cancelled, state))
         try:
             while True:
                 item = await asyncio.to_thread(chunks.get)
                 if item is None:
                     break
                 if isinstance(item, BaseException):
+                    if cancelled.is_set():
+                        return
                     raise item
                 if cancelled.is_set():
                     return
                 yield item
         finally:
+            watcher.cancel()
+            with suppress(asyncio.CancelledError):
+                await watcher
             if cancelled.is_set():
                 self._abort(state)
             await task
+
+    @staticmethod
+    async def _abort_on_cancel(
+        cancelled: asyncio.Event, state: dict[str, Any]
+    ) -> None:
+        await cancelled.wait()
+        OpenAISpeechBackend._abort(state)
 
     def _stream_blocking(
         self,
@@ -156,30 +175,38 @@ class OpenAISpeechBackend(SynthesisBackend):
         }
 
         with self._connection_lock:
+            if cancelled.is_set() or state.get("abort_requested"):
+                return
             connection = self._connection_for_request()
             state["connection"] = connection
             try:
+                if cancelled.is_set() or state.get("abort_requested"):
+                    self._discard_locked()
+                    return
                 connection.request("POST", self._target, body=payload, headers=headers)
                 response = connection.getresponse()
                 state["response"] = response
+                if cancelled.is_set() or state.get("abort_requested"):
+                    self._discard_locked()
+                    return
                 if response.status != 200:
                     detail = response.read(4096).decode("utf-8", "replace").strip()
                     raise RuntimeError(self._error_message(response.status, detail))
 
-                while not cancelled.is_set():
+                while not cancelled.is_set() and not state.get("abort_requested"):
                     chunk = response.read1(_READ_CHUNK_BYTES)
                     if not chunk:
                         break
                     if not self._offer(chunks, chunk, cancelled):
                         break
-                if cancelled.is_set():
+                if cancelled.is_set() or state.get("abort_requested"):
                     self._discard_locked()
             except RuntimeError:
                 self._discard_locked()
                 raise
             except Exception as error:
                 self._discard_locked()
-                if not cancelled.is_set():
+                if not cancelled.is_set() and not state.get("abort_requested"):
                     raise RuntimeError(
                         f"speech request failed: {type(error).__name__}: {error}"
                     ) from error
@@ -213,7 +240,19 @@ class OpenAISpeechBackend(SynthesisBackend):
 
     @staticmethod
     def _abort(state: dict[str, Any]) -> None:
-        for target in (state.get("response"), state.get("connection")):
+        # The flag closes the race where the worker has not published its
+        # connection yet; it re-checks the flag before every request step.
+        state["abort_requested"] = True
+        connection = state.get("connection")
+        # Closing a descriptor does not wake a blocked read on another
+        # thread; an explicit shutdown makes the worker's read return.
+        sock = getattr(connection, "sock", None)
+        if sock is not None:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+        for target in (state.get("response"), connection):
             if target is not None:
                 try:
                     target.close()

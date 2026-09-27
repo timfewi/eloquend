@@ -1,15 +1,35 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 import asyncio
 from pathlib import Path
 import tempfile
 import unittest
 
-from eloquend.backends import ToneBackend
+from eloquend.backends import AudioFormat, SynthesisBackend, ToneBackend
 from eloquend.client import TTSClient
 from eloquend.engine import EngineConfig, StreamingEngine
 from eloquend.protocol import Frame, FrameType, read_frame, write_frame
 from eloquend.server import TTSServer
+
+
+class HangingBackend(SynthesisBackend):
+    """Holds the model lane until the session is cancelled."""
+
+    def __init__(self) -> None:
+        self.entered = asyncio.Event()
+
+    @property
+    def audio_format(self) -> AudioFormat:
+        return AudioFormat(sample_rate=16_000)
+
+    async def synthesize(
+        self, text: str, cancelled: asyncio.Event
+    ) -> AsyncIterator[bytes]:
+        self.entered.set()
+        await cancelled.wait()
+        return
+        yield b""  # pragma: no cover
 
 
 class ServerTests(unittest.IsolatedAsyncioTestCase):
@@ -61,6 +81,48 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                         status = frame.decode_json()["status"]
                 self.assertEqual(status, "cancelled")
                 await client.close()
+            finally:
+                serve_task.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await serve_task
+                await server.close()
+
+    async def test_cancel_is_read_while_text_is_backpressured(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            socket_path = Path(directory) / "tts.sock"
+            backend = HangingBackend()
+            server = TTSServer(
+                StreamingEngine(
+                    backend,
+                    EngineConfig(
+                        warmup_text="",
+                        audio_queue_size=1,
+                        segment_queue_size=1,
+                    ),
+                ),
+                socket_path,
+            )
+            await server.start()
+            serve_task = asyncio.create_task(server.serve_forever())
+
+            try:
+                reader, writer = await asyncio.open_unix_connection(socket_path)
+                await write_frame(writer, Frame.json(FrameType.START, {}))
+                self.assertIs((await read_frame(reader)).kind, FrameType.READY)
+                # Far more segments than any queue holds; the receiver must
+                # still read the CANCEL that follows them.
+                await write_frame(writer, Frame(FrameType.TEXT, b"Einer. " * 2000))
+                await asyncio.wait_for(backend.entered.wait(), 1)
+                await write_frame(writer, Frame(FrameType.CANCEL))
+
+                status: str | None = None
+                while status is None:
+                    frame = await asyncio.wait_for(read_frame(reader), 2)
+                    if frame.kind is FrameType.DONE:
+                        status = frame.decode_json()["status"]
+                self.assertEqual(status, "cancelled")
+                writer.close()
+                await writer.wait_closed()
             finally:
                 serve_task.cancel()
                 with self.assertRaises(asyncio.CancelledError):

@@ -27,11 +27,13 @@ class _SpeechServer:
         chunks: tuple[bytes, ...] = (b"",),
         body: bytes = b"",
         delay_s: float = 0.0,
+        response_delay_s: float = 0.0,
     ) -> None:
         self.status = status
         self.chunks = chunks
         self.body = body
         self.delay_s = delay_s
+        self.response_delay_s = response_delay_s
         self.requests: list[dict[str, object]] = []
         self.connections = 0
 
@@ -57,6 +59,8 @@ class _SpeechServer:
                         "json": json.loads(raw),
                     }
                 )
+                if outer.response_delay_s:
+                    time.sleep(outer.response_delay_s)
                 if outer.status != 200:
                     self.send_response(outer.status)
                     self.send_header("Content-Type", "application/json")
@@ -203,6 +207,32 @@ class OpenAISpeechBackendTests(unittest.IsolatedAsyncioTestCase):
             chunk async for chunk in backend.synthesize("Wieder da.", cancelled)
         ]
         self.assertEqual(b"".join(chunks), bytes(range(200)))
+        self.assertGreaterEqual(server.connections, 2)
+        await backend.shutdown()
+
+    async def test_cancellation_aborts_a_stalled_request(self) -> None:
+        server = self._server(chunks=(b"\x00" * 4096,), response_delay_s=30.0)
+        backend = self._backend(server)
+        await backend.startup()
+
+        cancelled = asyncio.Event()
+        stream = backend.synthesize("Hängt.", cancelled)
+        pending = asyncio.ensure_future(stream.__anext__())
+        # Let the worker reach the provider before cancelling.
+        await asyncio.sleep(0.2)
+        started = time.monotonic()
+        cancelled.set()
+        with self.assertRaises(StopAsyncIteration):
+            await asyncio.wait_for(pending, timeout=3)
+        self.assertLess(time.monotonic() - started, 3)
+
+        # The aborted connection is discarded; the next phrase reconnects.
+        server.response_delay_s = 0.0
+        cancelled = asyncio.Event()
+        chunks = [
+            chunk async for chunk in backend.synthesize("Wieder da.", cancelled)
+        ]
+        self.assertEqual(b"".join(chunks), b"\x00" * 4096)
         self.assertGreaterEqual(server.connections, 2)
         await backend.shutdown()
 
